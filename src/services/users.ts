@@ -7,8 +7,8 @@ export interface User {
 
 const users: User[] = [
   // тестовые пользователи, подставь реальные id и username, когда узнаешь их
-  { telegramId: 111111111, username: 'user1' },
-  { telegramId: 222222222, username: 'user2' }
+  { telegramId: 7626757547, username: '@xaroca' },
+  { telegramId: 7203050773, username: '@knifenrose' }
 ];
 
 export async function getUserByUsername(username: string): Promise<User | null> {
