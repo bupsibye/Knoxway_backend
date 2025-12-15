@@ -14,7 +14,7 @@ async function bootstrap() {
   // API
   app.use('/api', routes);
 
-  // Webhook для бота (если будешь использовать WEBHOOK_URL, укажи этот путь)
+  // Webhook для бота
   app.post('/telegram/webhook', (req, res) => {
     (bot as any).handleUpdate(req.body);
     res.status(200).json({ ok: true });
