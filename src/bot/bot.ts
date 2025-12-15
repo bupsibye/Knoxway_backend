@@ -21,6 +21,21 @@ interface ExchangeRequest {
 
 const exchangeRequests = new Map<string, ExchangeRequest>();
 
+// ==== настройки хранилища подарков ====
+const STORAGE_USERNAME = 'xaroca'; // username хранилища
+const STORAGE_LINK = 'https://t.me/xaroca';
+
+enum GiftFlowStep {
+  None = 'none',
+  WaitingLink = 'waiting_link',
+  WaitingStorageConfirm = 'waiting_storage_confirm',
+}
+
+const giftFlowState = new Map<
+  number,
+  { step: GiftFlowStep; giftLink?: string }
+>();
+
 // простая генерация id
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
@@ -48,12 +63,12 @@ export async function setupBot() {
             {
               text: '🛍 Открыть Knox Market',
               web_app: {
-                url: FRONTEND_URL || 'https://knoxway-frontend.vercel.app'
-              }
-            }
-          ]
-        ]
-      }
+                url: FRONTEND_URL || 'https://knoxway-frontend.vercel.app',
+              },
+            },
+          ],
+        ],
+      },
     });
   });
 
@@ -61,17 +76,104 @@ export async function setupBot() {
     ctx.reply('Используй мини-приложение, чтобы обмениваться подарками.')
   );
 
-  // ======== API-хендлер, который дергает backend (см. routes/exchange.ts) ========
-  // Вызывается не пользователем, а твоим сервером через bot.telegram.sendMessage,
-  // поэтому здесь дополнительных команд не нужно.
+  // ======== Сценарий внесения подарка ========
 
-  // ======== Обработка callback-кнопок Принять / Отклонить ========
+  // старт через команду /add_gift (мы будем открывать её с фронта)
+  bot.command('add_gift', async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    giftFlowState.set(userId, { step: GiftFlowStep.WaitingLink });
+    await ctx.reply(
+      'Скиньте ссылку на подарок, который хотите внести в свой инвентарь.'
+    );
+  });
+
+  // перехватываем текст только если ждём ссылку на подарок
+  bot.on('text', async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    const state = giftFlowState.get(userId);
+    if (!state || state.step !== GiftFlowStep.WaitingLink) {
+      return; // не в процессе внесения подарка – ничего не делаем
+    }
+
+    const giftLink = ctx.message.text.trim();
+    if (!giftLink) {
+      await ctx.reply('Пожалуйста, отправьте корректную ссылку на подарок.');
+      return;
+    }
+
+    giftFlowState.set(userId, {
+      step: GiftFlowStep.WaitingStorageConfirm,
+      giftLink,
+    });
+
+    const username = ctx.from?.username
+      ? `@${ctx.from.username}`
+      : `id ${userId}`;
+
+    // сообщение пользователю с кнопкой на хранилище
+    await ctx.reply('Отправьте подарок в наше хранилище.', {
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Передать подарок', url: STORAGE_LINK }]],
+      },
+    });
+
+    // сообщение аккаунту-хранилищу
+    await bot.telegram.sendMessage(
+      STORAGE_USERNAME,
+      `${username} должен передать вам подарок:\n${giftLink}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: 'Да, подарок получен', callback_data: `gift_yes:${userId}` },
+            { text: 'Нет, подарок не получен', callback_data: `gift_no:${userId}` },
+          ]],
+        },
+      }
+    );
+  });
+
+  // ======== Обработка callback-кнопок (обмен + хранилище) ========
 
   bot.on('callback_query', async (ctx) => {
     const cb = ctx.callbackQuery;
     if (!('data' in cb) || !cb.data) return;
 
-    const [action, requestId] = cb.data.split(':');
+    const [action, payload] = cb.data.split(':');
+
+    // --- кнопки хранилища ---
+    if (action === 'gift_yes' || action === 'gift_no') {
+      const targetUserId = Number(payload);
+      const state = giftFlowState.get(targetUserId);
+      if (!state || state.step !== GiftFlowStep.WaitingStorageConfirm) {
+        await ctx.answerCbQuery('Процесс внесения подарка не найден или устарел');
+        return;
+      }
+
+      giftFlowState.delete(targetUserId);
+
+      if (action === 'gift_yes') {
+        await ctx.answerCbQuery('Отмечено: подарок получен ✅');
+        await bot.telegram.sendMessage(
+          targetUserId,
+          'Подарок успешно передан в наше хранилище, ожидайте пару минут и он появится у вас в инвентаре.'
+        );
+      } else {
+        await ctx.answerCbQuery('Отмечено: подарок не получен');
+        await bot.telegram.sendMessage(
+          targetUserId,
+          'К сожалению, вы не передали подарок в наше хранилище. Этот подарок не будет отображаться у вас в инвентаре.'
+        );
+      }
+
+      return;
+    }
+
+    // --- старые кнопки обмена ---
+    const requestId = payload;
     const request = exchangeRequests.get(requestId);
     if (!request) {
       await ctx.answerCbQuery('Заявка не найдена или устарела');
@@ -158,7 +260,7 @@ export function createExchangeRequestAndNotify(params: {
     toUserId: params.toUserId,
     toUsername: params.toUsername,
     status: 'pending',
-    exchangeLink: null
+    exchangeLink: null,
   };
 
   exchangeRequests.set(id, request);
@@ -177,8 +279,8 @@ export function createExchangeRequestAndNotify(params: {
     Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Принять', `exchange_accept:${id}`),
-        Markup.button.callback('❌ Отклонить', `exchange_reject:${id}`)
-      ]
+        Markup.button.callback('❌ Отклонить', `exchange_reject:${id}`),
+      ],
     ])
   );
 }
