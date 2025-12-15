@@ -20,15 +20,18 @@ async function bootstrap() {
     res.status(200).json({ ok: true });
   });
 
+  // Регистрируем все хендлеры бота
   await setupBot();
 
-  // Настраиваем webhook у Telegram, если задан WEBHOOK_URL
+  // Настраиваем webhook у Telegram
   if (WEBHOOK_URL) {
     const webhookUrl = `${WEBHOOK_URL.replace(/\/+$/, '')}/telegram/webhook`;
     await bot.telegram.setWebhook(webhookUrl);
     console.log(`🤖 Webhook set to ${webhookUrl}`);
   } else {
-    console.log('⚠️ WEBHOOK_URL is empty, Telegram updates не будут приходить');
+    console.log(
+      '⚠️ WEBHOOK_URL пустой — Telegram не будет присылать апдейты боту'
+    );
   }
 
   app.listen(PORT, () => {
