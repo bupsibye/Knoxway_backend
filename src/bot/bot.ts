@@ -32,7 +32,9 @@ export interface CreateExchangeParams {
 /**
  * Создаёт заявку на обмен и отправляет уведомление получателю
  */
-export async function createExchangeRequestAndNotify(params: CreateExchangeParams) {
+export async function createExchangeRequestAndNotify(
+  params: CreateExchangeParams
+) {
   const id = Math.random().toString(36).slice(2, 10);
 
   const req: ExchangeRequest = {
@@ -46,7 +48,9 @@ export async function createExchangeRequestAndNotify(params: CreateExchangeParam
 
   exchangeRequests.set(id, req);
 
-  const fromUserText = params.fromUsername ? `@${params.fromUsername}` : 'пользователь';
+  const fromUserText = params.fromUsername
+    ? `@${params.fromUsername}`
+    : 'пользователь';
 
   const text =
     '🔄 У вас новое предложение на обмен!\n\n' +
@@ -68,10 +72,13 @@ export async function createExchangeRequestAndNotify(params: CreateExchangeParam
 
 // ====== Подарки: сценарий с хранилищем ======
 
-const giftFlowState = new Map<number, { step: string; link?: string; username?: string }>();
+const giftFlowState = new Map<
+  number,
+  { step: string; link?: string; username?: string }
+>();
 
 // ID аккаунта-хранилища (Telegram ID @xaroca)
-const STORAGE_USER_ID = 7626757547; // проверь, что это реальный ID аккаунта-хранилища
+const STORAGE_USER_ID = 7626757547; // проверь реальный ID @xaroca
 const STORAGE_USERNAME = '@xaroca';
 
 export async function setupBot() {
@@ -236,10 +243,27 @@ export async function setupBot() {
       exchangeRequests.set(exchangeId, req);
 
       const toUserName = req.toUsername ? `@${req.toUsername}` : 'пользователь';
+      const fromUserName = req.fromUsername
+        ? `@${req.fromUsername}`
+        : 'пользователь';
 
+      const link = `${FRONTEND_URL.replace(
+        /\/+$/,
+        ''
+      )}/exchange?exchangeId=${exchangeId}`;
+
+      // инициатору
       await ctx.telegram.sendMessage(
         req.fromUserId,
-        `✅ ${toUserName} принял(а) ваше предложение обмена`
+        `✅ ${toUserName} принял(а) ваше предложение обмена.\n\n` +
+          `Откройте меню обмена по ссылке:\n${link}`
+      );
+
+      // принявшему
+      await ctx.telegram.sendMessage(
+        req.toUserId,
+        `✅ Вы приняли предложение обмена от ${fromUserName}.\n\n` +
+          `Откройте меню обмена по ссылке:\n${link}`
       );
 
       await ctx.answerCbQuery('Вы приняли предложение обмена');
