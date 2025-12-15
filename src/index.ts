@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { json } from 'express';
 import { PORT } from './config';
-import { apiRouter } from './routes';
+import routes from './routes';
 import { bot, setupBot } from './bot/bot';
 
 async function bootstrap() {
@@ -12,7 +12,7 @@ async function bootstrap() {
   app.use(json());
 
   // API
-  app.use('/api', apiRouter);
+  app.use('/api', routes);
 
   // Webhook для бота (если будешь использовать WEBHOOK_URL, укажи этот путь)
   app.post('/telegram/webhook', (req, res) => {
