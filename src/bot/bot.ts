@@ -39,12 +39,29 @@ function generateId() {
 }
 
 export async function setupBot() {
-  // /start — приветствие и кнопка открытия мини‑аппы
+  // /start — приветствие ИЛИ запуск сценария add_gift по payload
   bot.start(async (ctx) => {
+    const text = ctx.message?.text || '';
+    const parts = text.split(' ');
+    const payload = parts.length > 1 ? parts.slice(1).join(' ') : '';
+
+    // если пришёл /start add_gift — сразу запускаем сценарий внесения подарка
+    if (payload === 'add_gift') {
+      const userId = ctx.from?.id;
+      if (!userId) return;
+
+      giftFlowState.set(userId, { step: GiftFlowStep.WaitingLink });
+      await ctx.reply(
+        'Скиньте ссылку на подарок, который хотите внести в свой инвентарь.'
+      );
+      return;
+    }
+
+    // обычный /start без payload — приветствие и кнопка мини‑аппы
     const user = ctx.from;
     const name = user?.username ? `@${user.username}` : user?.first_name || 'друг';
 
-    const text =
+    const welcomeText =
       `👋 Привет, ${name}! Добро пожаловать в Knox Market!\n\n` +
       `Здесь ты можешь:\n` +
       `- 💬 Обмениваться подарками с друзьями;\n` +
@@ -53,7 +70,7 @@ export async function setupBot() {
       `- 🔒 Обмениваться безопасно, без «скинь первым — иду на доверии».\n\n` +
       `Нажми кнопку ниже, чтобы начать:`;
 
-    await ctx.reply(text, {
+    await ctx.reply(welcomeText, {
       reply_markup: {
         inline_keyboard: [
           [
@@ -72,38 +89,6 @@ export async function setupBot() {
   bot.help((ctx) =>
     ctx.reply('Используй мини-приложение, чтобы обмениваться подарками.')
   );
-
-  // ======== Сценарий внесения подарка через /start add_gift ========
-
-  // перехватываем /start с параметром add_gift
-  bot.on('message', async (ctx, next) => {
-    if (!('text' in ctx.message) || !ctx.message.entities) {
-      return next();
-    }
-
-    const entity = ctx.message.entities.find((e) => e.type === 'bot_command');
-    if (!entity) return next();
-
-    const text = ctx.message.text;
-    const command = text.slice(entity.offset, entity.offset + entity.length);
-
-    if (command !== '/start') return next();
-
-    const payload = text.slice(entity.offset + entity.length).trim(); // то, что после /start
-
-    if (payload === 'add_gift') {
-      const userId = ctx.from?.id;
-      if (!userId) return;
-
-      giftFlowState.set(userId, { step: GiftFlowStep.WaitingLink });
-      await ctx.reply(
-        'Скиньте ссылку на подарок, который хотите внести в свой инвентарь.'
-      );
-      return;
-    }
-
-    return next();
-  });
 
   // перехватываем текст только если ждём ссылку на подарок
   bot.on('text', async (ctx) => {
