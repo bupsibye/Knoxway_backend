@@ -10,14 +10,14 @@ export const bot = new Telegraf(BOT_TOKEN);
 // Хранилище состояний сценариев подарков
 const giftFlowState = new Map<number, { step: string; link?: string; username?: string }>();
 
-// ID аккаунта-хранилища
-const STORAGE_USER_ID = 7626757547; // @xaroca
+// ID аккаунта-хранилища (Telegram ID @xaroca)
+const STORAGE_USER_ID = 7626757547; // проверь, что это реальный ID аккаунта-хранилища
 const STORAGE_USERNAME = '@xaroca';
 
 export async function setupBot() {
   // Обработка /start с параметром add_gift
   bot.start(async (ctx) => {
-    const payload = ctx.match?.trim();
+    const payload = (ctx.match as unknown as string | undefined)?.trim();
     const userId = ctx.from.id;
     const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name || 'пользователь';
 
@@ -34,17 +34,17 @@ export async function setupBot() {
     // Обычное приветствие
     await ctx.reply(
       `👋 Привет, ${username}! Добро пожаловать в <b>Knox Market</b>!\n\n` +
-      'Здесь ты можешь:\n' +
-      '• 💬 Обмениваться подарками с друзьями\n' +
-      '• 🎁 Покупать и дарить подарки за рубли\n' +
-      '• ⭐️ Покупать звезды по выгодному курсу\n' +
-      '• 🔒 Обмениваться безопасно\n\n' +
-      '<b>Нажми кнопку ниже, чтобы начать:</b>',
+        'Здесь ты можешь:\n' +
+        '• 💬 Обмениваться подарками с друзьями\n' +
+        '• 🎁 Покупать и дарить подарки за рубли\n' +
+        '• ⭐️ Покупать звезды по выгодному курсу\n' +
+        '• 🔒 Обмениваться безопасно\n\n' +
+        '<b>Нажми кнопку ниже, чтобы начать:</b>',
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🛍 Открыть Knox Market', FRONTEND_URL)]
-        ])
+          [Markup.button.webApp('🛍 Открыть Knox Market', FRONTEND_URL)],
+        ]),
       }
     );
   });
@@ -56,46 +56,55 @@ export async function setupBot() {
 
     if (state?.step === 'waiting_link') {
       const giftLink = ctx.message.text.trim();
-      const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name || 'пользователь';
+      const username = ctx.from.username
+        ? `@${ctx.from.username}`
+        : ctx.from.first_name || 'пользователь';
 
       // ✅ Сохраняем ссылку и переходим к передаче в хранилище
-      giftFlowState.set(userId, { 
-        step: 'waiting_storage_confirm', 
-        link: giftLink, 
-        username 
+      giftFlowState.set(userId, {
+        step: 'waiting_storage_confirm',
+        link: giftLink,
+        username,
       });
 
       // Пользователю: кнопка передачи подарка
       await ctx.reply(
         '📤 <b>Отправьте подарок в наше хранилище</b>\n\n' +
-        'Нажмите кнопку ниже, чтобы передать подарок:',
-        {
-          parse_mode: 'HTML',
-          ...Markup.inlineKeyboard([
-            [Markup.button.url('🚚 Передать подарок', `https://t.me/${STORAGE_USERNAME.slice(1)}`)]
-          ])
-        }
-      );
-
-      // ✅ ПИШЕМ ХРАНИЛИЩУ (@xaroca) уведомление
-      const storageMessage = 
-        `📦 <b>${username} должен передать вам подарок</b>\n\n` +
-        `🔗 <a href="${giftLink}">Ссылка на подарок</a>\n\n` +
-        '<b>Пользователь передал подарок?</b>`;
-
-      await bot.telegram.sendMessage(
-        STORAGE_USER_ID,
-        storageMessage,
+          'Нажмите кнопку ниже, чтобы передать подарок:',
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [
-              Markup.button.callback('✅ Да, подарок получен', `storage_confirm_yes:${userId}:${giftLink}`),
-              Markup.button.callback('❌ Нет, подарок не получен', `storage_confirm_no:${userId}`)
-            ]
-          ])
+              Markup.button.url(
+                '🚚 Передать подарок',
+                `https://t.me/${STORAGE_USERNAME.slice(1)}`
+              ),
+            ],
+          ]),
         }
       );
+
+      // ✅ ПИШЕМ ХРАНИЛИЩУ (@xaroca) уведомление
+      const storageMessage =
+        `📦 <b>${username} должен передать вам подарок</b>\n\n` +
+        `🔗 <a href="${giftLink}">Ссылка на подарок</a>\n\n` +
+        '<b>Пользователь передал подарок?</b>';
+
+      await bot.telegram.sendMessage(STORAGE_USER_ID, storageMessage, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              '✅ Да, подарок получен',
+              `storage_confirm_yes:${userId}:${giftLink}`
+            ),
+            Markup.button.callback(
+              '❌ Нет, подарок не получен',
+              `storage_confirm_no:${userId}`
+            ),
+          ],
+        ]),
+      });
 
       return; // Не передаем дальше
     }
@@ -105,11 +114,11 @@ export async function setupBot() {
 
   // Обработка кнопок хранилища
   bot.on('callback_query', async (ctx) => {
-    const data = ctx.callbackQuery.data;
-    const userId = ctx.from.id;
+    const data = ctx.callbackQuery.data || '';
+    const fromId = ctx.from.id;
 
     // ✅ Хранилище подтвердило "Да, подарок получен"
-    if (data?.startsWith('storage_confirm_yes:')) {
+    if (data.startsWith('storage_confirm_yes:')) {
       const [, targetUserId, giftLink] = data.split(':');
       const targetId = Number(targetUserId);
 
@@ -120,7 +129,7 @@ export async function setupBot() {
       await ctx.telegram.sendMessage(
         targetId,
         '✅ <b>Подарок успешно передан в наше хранилище!</b>\n\n' +
-        'Ожидайте пару минут и он появится у вас в инвентаре.',
+          'Ожидайте пару минут и он появится у вас в инвентаре.',
         { parse_mode: 'HTML' }
       );
 
@@ -129,7 +138,7 @@ export async function setupBot() {
     }
 
     // ✅ Хранилище подтвердило "Нет, подарок не получен"
-    if (data?.startsWith('storage_confirm_no:')) {
+    if (data.startsWith('storage_confirm_no:')) {
       const [, targetUserId] = data.split(':');
       const targetId = Number(targetUserId);
 
@@ -140,7 +149,7 @@ export async function setupBot() {
       await ctx.telegram.sendMessage(
         targetId,
         '❌ <b>К сожалению, вы не передали подарок в наше хранилище.</b>\n\n' +
-        'Этот подарок не будет отображаться у вас в инвентаре.',
+          'Этот подарок не будет отображаться у вас в инвентаре.',
         { parse_mode: 'HTML' }
       );
 
@@ -148,12 +157,10 @@ export async function setupBot() {
       return;
     }
 
-    // Существующая логика обмена (НЕ ТРОГАЕТСЯ)
-    // ... exchange_accept, exchange_reject handlers ...
+    // Здесь остаются твои обработчики обмена (exchange_accept / exchange_reject)
+    // if (data.startsWith('exchange_accept:')) { ... }
+    // if (data.startsWith('exchange_reject:')) { ... }
   });
 
-  // Существующие обработчики обмена (остаются без изменений)
-  // bot.action('exchange_accept:...') 
-  // bot.action('exchange_reject:...') 
-  // exchangeRequests Map логика
+  // здесь остаётся остальная логика бота (webhook / launch), как было в проекте
 }
