@@ -84,13 +84,8 @@ const STORAGE_USERNAME = '@xaroca';
 export async function setupBot() {
   // /start и /start add_gift
   bot.start(async (ctx) => {
-    const rawMatch = ctx.match as unknown;
-    const payload =
-      typeof rawMatch === 'string'
-        ? rawMatch.trim()
-        : Array.isArray(rawMatch) && typeof rawMatch[0] === 'string'
-        ? rawMatch[0].trim()
-        : undefined;
+    // Telegraf кладёт параметр из /start сюда, при ?start=add_gift → 'add_gift'
+    const payload = (ctx as any).startPayload as string | undefined;
 
     const userId = ctx.from.id;
     const username = ctx.from.username
@@ -252,14 +247,12 @@ export async function setupBot() {
         ''
       )}/exchange?exchangeId=${exchangeId}`;
 
-      // инициатору
       await ctx.telegram.sendMessage(
         req.fromUserId,
         `✅ ${toUserName} принял(а) ваше предложение обмена.\n\n` +
           `Откройте меню обмена по ссылке:\n${link}`
       );
 
-      // принявшему
       await ctx.telegram.sendMessage(
         req.toUserId,
         `✅ Вы приняли предложение обмена от ${fromUserName}.\n\n` +
