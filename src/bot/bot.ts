@@ -1,5 +1,5 @@
-import { Telegraf, Context, Markup } from 'telegraf';
-import { BOT_TOKEN, WEBHOOK_URL, FRONTEND_URL } from '../config';
+import { Telegraf, Markup } from 'telegraf';
+import { BOT_TOKEN, FRONTEND_URL } from '../config';
 
 if (!BOT_TOKEN) {
   throw new Error('BOT_TOKEN is required');
@@ -7,7 +7,67 @@ if (!BOT_TOKEN) {
 
 export const bot = new Telegraf(BOT_TOKEN);
 
-// Хранилище состояний сценариев подарков
+// ====== Обмен: in‑memory заявки ======
+
+type ExchangeRequestStatus = 'pending' | 'accepted' | 'rejected';
+
+interface ExchangeRequest {
+  id: string;
+  fromUserId: number;
+  fromUsername?: string;
+  toUserId: number;
+  toUsername?: string;
+  status: ExchangeRequestStatus;
+}
+
+const exchangeRequests = new Map<string, ExchangeRequest>();
+
+export interface CreateExchangeParams {
+  fromUserId: number;
+  fromUsername?: string;
+  toUserId: number;
+  toUsername?: string;
+}
+
+/**
+ * Создаёт заявку на обмен и отправляет уведомление получателю
+ */
+export async function createExchangeRequestAndNotify(params: CreateExchangeParams) {
+  const id = Math.random().toString(36).slice(2, 10);
+
+  const req: ExchangeRequest = {
+    id,
+    fromUserId: params.fromUserId,
+    fromUsername: params.fromUsername,
+    toUserId: params.toUserId,
+    toUsername: params.toUsername,
+    status: 'pending',
+  };
+
+  exchangeRequests.set(id, req);
+
+  const fromUserText = params.fromUsername ? `@${params.fromUsername}` : 'пользователь';
+
+  const text =
+    '🔄 У вас новое предложение на обмен!\n\n' +
+    `От: ${fromUserText}\n` +
+    'Предлагает обменяться подарками.\n\n' +
+    '👉 Примите или отклоните:';
+
+  await bot.telegram.sendMessage(
+    params.toUserId,
+    text,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback('✅ Принять', `exchange_accept:${id}`),
+        Markup.button.callback('❌ Отклонить', `exchange_reject:${id}`),
+      ],
+    ])
+  );
+}
+
+// ====== Подарки: сценарий с хранилищем ======
+
 const giftFlowState = new Map<number, { step: string; link?: string; username?: string }>();
 
 // ID аккаунта-хранилища (Telegram ID @xaroca)
@@ -15,14 +75,13 @@ const STORAGE_USER_ID = 7626757547; // проверь, что это реаль�
 const STORAGE_USERNAME = '@xaroca';
 
 export async function setupBot() {
-  // Обработка /start с параметром add_gift
+  // /start и /start add_gift
   bot.start(async (ctx) => {
     const payload = (ctx.match as unknown as string | undefined)?.trim();
     const userId = ctx.from.id;
     const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name || 'пользователь';
 
     if (payload === 'add_gift') {
-      // ✅ Сценарий внесения подарка
       giftFlowState.set(userId, { step: 'waiting_link', username });
       await ctx.reply(
         '📦 Скиньте ссылку на подарок, который хотите внести в свой инвентарь.',
@@ -31,7 +90,6 @@ export async function setupBot() {
       return;
     }
 
-    // Обычное приветствие
     await ctx.reply(
       `👋 Привет, ${username}! Добро пожаловать в <b>Knox Market</b>!\n\n` +
         'Здесь ты можешь:\n' +
@@ -49,7 +107,7 @@ export async function setupBot() {
     );
   });
 
-  // Обработка текста (ссылка на подарок)
+  // Ссылка на подарок от пользователя
   bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
     const state = giftFlowState.get(userId);
@@ -60,14 +118,13 @@ export async function setupBot() {
         ? `@${ctx.from.username}`
         : ctx.from.first_name || 'пользователь';
 
-      // ✅ Сохраняем ссылку и переходим к передаче в хранилище
       giftFlowState.set(userId, {
         step: 'waiting_storage_confirm',
         link: giftLink,
         username,
       });
 
-      // Пользователю: кнопка передачи подарка
+      // пользователю — кнопка передачи подарка
       await ctx.reply(
         '📤 <b>Отправьте подарок в наше хранилище</b>\n\n' +
           'Нажмите кнопку ниже, чтобы передать подарок:',
@@ -84,7 +141,7 @@ export async function setupBot() {
         }
       );
 
-      // ✅ ПИШЕМ ХРАНИЛИЩУ (@xaroca) уведомление
+      // хранилищу — уведомление с кнопками
       const storageMessage =
         `📦 <b>${username} должен передать вам подарок</b>\n\n` +
         `🔗 <a href="${giftLink}">Ссылка на подарок</a>\n\n` +
@@ -106,26 +163,25 @@ export async function setupBot() {
         ]),
       });
 
-      return; // Не передаем дальше
+      return;
     }
 
-    return next(); // Обычная обработка текста
+    return next();
   });
 
-  // Обработка кнопок хранилища
+  // Все callback‑кнопки
   bot.on('callback_query', async (ctx) => {
-    const data = ctx.callbackQuery.data || '';
-    const fromId = ctx.from.id;
+    const cq: any = ctx.callbackQuery;
+    const data: string = cq && 'data' in cq ? cq.data : '';
 
-    // ✅ Хранилище подтвердило "Да, подарок получен"
+    // ====== Кнопки хранилища ======
+
     if (data.startsWith('storage_confirm_yes:')) {
-      const [, targetUserId, giftLink] = data.split(':');
+      const [, targetUserId] = data.split(':');
       const targetId = Number(targetUserId);
 
-      // Удаляем состояние
       giftFlowState.delete(targetId);
 
-      // ✅ ПИШЕМ ПОЛЬЗОВАТЕЛЮ: успешно!
       await ctx.telegram.sendMessage(
         targetId,
         '✅ <b>Подарок успешно передан в наше хранилище!</b>\n\n' +
@@ -137,15 +193,12 @@ export async function setupBot() {
       return;
     }
 
-    // ✅ Хранилище подтвердило "Нет, подарок не получен"
     if (data.startsWith('storage_confirm_no:')) {
       const [, targetUserId] = data.split(':');
       const targetId = Number(targetUserId);
 
-      // Удаляем состояние
       giftFlowState.delete(targetId);
 
-      // ✅ ПИШЕМ ПОЛЬЗОВАТЕЛЮ: отказ
       await ctx.telegram.sendMessage(
         targetId,
         '❌ <b>К сожалению, вы не передали подарок в наше хранилище.</b>\n\n' +
@@ -157,10 +210,58 @@ export async function setupBot() {
       return;
     }
 
-    // Здесь остаются твои обработчики обмена (exchange_accept / exchange_reject)
-    // if (data.startsWith('exchange_accept:')) { ... }
-    // if (data.startsWith('exchange_reject:')) { ... }
+    // ====== Кнопки обмена ======
+
+    if (data.startsWith('exchange_accept:')) {
+      const [, exchangeId] = data.split(':');
+      const req = exchangeRequests.get(exchangeId);
+
+      if (!req || req.status !== 'pending') {
+        await ctx.answerCbQuery('Заявка не найдена или уже обработана');
+        return;
+      }
+
+      req.status = 'accepted';
+      exchangeRequests.set(exchangeId, req);
+
+      const toUserName = req.toUsername ? `@${req.toUsername}` : 'пользователь';
+      const fromUserName = req.fromUsername ? `@${req.fromUsername}` : 'пользователь';
+
+      // уведомляем инициатора
+      await ctx.telegram.sendMessage(
+        req.fromUserId,
+        `✅ ${toUserName} принял(а) ваше предложение обмена`
+      );
+
+      // можно добавить здесь ссылку в мини‑аппу для завершения обмена
+
+      await ctx.answerCbQuery('Вы приняли предложение обмена');
+      return;
+    }
+
+    if (data.startsWith('exchange_reject:')) {
+      const [, exchangeId] = data.split(':');
+      const req = exchangeRequests.get(exchangeId);
+
+      if (!req || req.status !== 'pending') {
+        await ctx.answerCbQuery('Заявка не найдена или уже обработана');
+        return;
+      }
+
+      req.status = 'rejected';
+      exchangeRequests.set(exchangeId, req);
+
+      const toUserName = req.toUsername ? `@${req.toUsername}` : 'пользователь';
+
+      await ctx.telegram.sendMessage(
+        req.fromUserId,
+        `❌ ${toUserName} отказался(ась) от вашего предложения обмена`
+      );
+
+      await ctx.answerCbQuery('Вы отклонили предложение обмена');
+      return;
+    }
   });
 
-  // здесь остаётся остальная логика бота (webhook / launch), как было в проекте
+  // здесь остаётся остальная логика запуска/вебхука, как было в проекте
 }
