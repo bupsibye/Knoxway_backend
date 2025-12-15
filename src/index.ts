@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { json } from 'express';
-import { PORT } from './config';
+import { PORT, WEBHOOK_URL } from './config';
 import routes from './routes';
 import { bot, setupBot } from './bot/bot';
 
@@ -20,11 +20,20 @@ async function bootstrap() {
     res.status(200).json({ ok: true });
   });
 
+  await setupBot();
+
+  // Настраиваем webhook у Telegram, если задан WEBHOOK_URL
+  if (WEBHOOK_URL) {
+    const webhookUrl = `${WEBHOOK_URL.replace(/\/+$/, '')}/telegram/webhook`;
+    await bot.telegram.setWebhook(webhookUrl);
+    console.log(`🤖 Webhook set to ${webhookUrl}`);
+  } else {
+    console.log('⚠️ WEBHOOK_URL is empty, Telegram updates не будут приходить');
+  }
+
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
   });
-
-  await setupBot();
 }
 
 bootstrap().catch((err) => {
