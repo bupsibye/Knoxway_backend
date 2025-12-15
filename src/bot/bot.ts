@@ -31,10 +31,7 @@ enum GiftFlowStep {
   WaitingStorageConfirm = 'waiting_storage_confirm',
 }
 
-const giftFlowState = new Map<
-  number,
-  { step: GiftFlowStep; giftLink?: string }
->();
+const giftFlowState = new Map<number, { step: GiftFlowStep; giftLink?: string }>();
 
 // простая генерация id
 function generateId() {
@@ -42,7 +39,7 @@ function generateId() {
 }
 
 export async function setupBot() {
-  // /start
+  // /start — приветствие и кнопка открытия мини‑аппы
   bot.start(async (ctx) => {
     const user = ctx.from;
     const name = user?.username ? `@${user.username}` : user?.first_name || 'друг';
@@ -76,17 +73,36 @@ export async function setupBot() {
     ctx.reply('Используй мини-приложение, чтобы обмениваться подарками.')
   );
 
-  // ======== Сценарий внесения подарка ========
+  // ======== Сценарий внесения подарка через /start add_gift ========
 
-  // старт через команду /add_gift (мы будем открывать её с фронта)
-  bot.command('add_gift', async (ctx) => {
-    const userId = ctx.from?.id;
-    if (!userId) return;
+  // перехватываем /start с параметром add_gift
+  bot.on('message', async (ctx, next) => {
+    if (!('text' in ctx.message) || !ctx.message.entities) {
+      return next();
+    }
 
-    giftFlowState.set(userId, { step: GiftFlowStep.WaitingLink });
-    await ctx.reply(
-      'Скиньте ссылку на подарок, который хотите внести в свой инвентарь.'
-    );
+    const entity = ctx.message.entities.find((e) => e.type === 'bot_command');
+    if (!entity) return next();
+
+    const text = ctx.message.text;
+    const command = text.slice(entity.offset, entity.offset + entity.length);
+
+    if (command !== '/start') return next();
+
+    const payload = text.slice(entity.offset + entity.length).trim(); // то, что после /start
+
+    if (payload === 'add_gift') {
+      const userId = ctx.from?.id;
+      if (!userId) return;
+
+      giftFlowState.set(userId, { step: GiftFlowStep.WaitingLink });
+      await ctx.reply(
+        'Скиньте ссылку на подарок, который хотите внести в свой инвентарь.'
+      );
+      return;
+    }
+
+    return next();
   });
 
   // перехватываем текст только если ждём ссылку на подарок
