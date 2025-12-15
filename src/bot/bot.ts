@@ -77,7 +77,6 @@ const STORAGE_USERNAME = '@xaroca';
 export async function setupBot() {
   // /start и /start add_gift
   bot.start(async (ctx) => {
-    // match может быть строкой или массивом — берём безопасно
     const rawMatch = ctx.match as unknown;
     const payload =
       typeof rawMatch === 'string'
@@ -270,6 +269,4 @@ export async function setupBot() {
       return;
     }
   });
-
-  // дальше остаётся запуск/вебхук, как в твоём проекте
 }
