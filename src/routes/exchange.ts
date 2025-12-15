@@ -1,4 +1,3 @@
-// backend/src/routes/exchange.ts
 import { Router } from 'express';
 import { createExchangeRequestAndNotify } from '../bot/bot';
 import { getUserByUsername } from '../services/users';
@@ -23,7 +22,6 @@ exchangeRouter.post('/create', async (req, res) => {
         .json({ error: 'fromUserId and toUsername are required' });
     }
 
-    // ищем пользователя по username
     const targetUser = await getUserByUsername(toUsername);
 
     if (!targetUser) {
