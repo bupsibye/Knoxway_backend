@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import meRouter from './me';
-import exchangeRouter from './exchange';
+import { exchangeRouter } from './exchange';
 
 const router = Router();
 
