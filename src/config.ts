@@ -1,11 +1,9 @@
-import dotenv from 'dotenv';
+// backend/src/config.ts
 
-dotenv.config();
+export const BOT_TOKEN = process.env.BOT_TOKEN || '';
+export const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
+export const FRONTEND_URL =
+  process.env.FRONTEND_URL || 'https://knoxway-frontend.vercel.app';
 
-export const PORT = Number(process.env.PORT) || 4000;
-export const BOT_TOKEN = process.env.BOT_TOKEN || '8212274685:AAEN_jjb3hUnVN9CxdR9lSrG416yQXmk4Tk';
-export const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://knoxway-backend.onrender.com/telegram/webhook';
-
-if (!BOT_TOKEN) {
-  console.warn('⚠️ BOT_TOKEN is not set in .env');
-}
+export const BACKEND_URL =
+  process.env.BACKEND_URL || 'https://knoxway-backend.onrender.com';
