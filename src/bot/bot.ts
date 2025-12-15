@@ -77,10 +77,21 @@ const STORAGE_USERNAME = '@xaroca';
 export async function setupBot() {
   // /start и /start add_gift
   bot.start(async (ctx) => {
-    const payload = (ctx.match as unknown as string | undefined)?.trim();
-    const userId = ctx.from.id;
-    const username = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name || 'пользователь';
+    // match может быть строкой или массивом — берём безопасно
+    const rawMatch = ctx.match as unknown;
+    const payload =
+      typeof rawMatch === 'string'
+        ? rawMatch.trim()
+        : Array.isArray(rawMatch) && typeof rawMatch[0] === 'string'
+        ? rawMatch[0].trim()
+        : undefined;
 
+    const userId = ctx.from.id;
+    const username = ctx.from.username
+      ? `@${ctx.from.username}`
+      : ctx.from.first_name || 'пользователь';
+
+    // /start add_gift → сценарий внесения подарка
     if (payload === 'add_gift') {
       giftFlowState.set(userId, { step: 'waiting_link', username });
       await ctx.reply(
@@ -90,6 +101,7 @@ export async function setupBot() {
       return;
     }
 
+    // Любой другой /start → приветствие
     await ctx.reply(
       `👋 Привет, ${username}! Добро пожаловать в <b>Knox Market</b>!\n\n` +
         'Здесь ты можешь:\n' +
@@ -225,15 +237,11 @@ export async function setupBot() {
       exchangeRequests.set(exchangeId, req);
 
       const toUserName = req.toUsername ? `@${req.toUsername}` : 'пользователь';
-      const fromUserName = req.fromUsername ? `@${req.fromUsername}` : 'пользователь';
 
-      // уведомляем инициатора
       await ctx.telegram.sendMessage(
         req.fromUserId,
         `✅ ${toUserName} принял(а) ваше предложение обмена`
       );
-
-      // можно добавить здесь ссылку в мини‑аппу для завершения обмена
 
       await ctx.answerCbQuery('Вы приняли предложение обмена');
       return;
@@ -263,5 +271,5 @@ export async function setupBot() {
     }
   });
 
-  // здесь остаётся остальная логика запуска/вебхука, как было в проекте
+  // дальше остаётся запуск/вебхук, как в твоём проекте
 }
